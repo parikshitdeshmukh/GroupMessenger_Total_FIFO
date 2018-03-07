@@ -27,6 +27,9 @@ import android.widget.TextView;
  * @author stevko
  *
  */
+
+//Reference: Android Developer : https://developer.android.com/develop/index.html
+
 public class OnPTestClickListener implements OnClickListener {
 
     private static final String TAG = OnPTestClickListener.class.getName();
