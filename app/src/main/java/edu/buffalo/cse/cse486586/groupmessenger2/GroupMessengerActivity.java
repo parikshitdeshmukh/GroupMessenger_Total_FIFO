@@ -36,7 +36,7 @@ import java.util.List;
 //Reference: Android Developer : https://developer.android.com/develop/index.html
 public class GroupMessengerActivity extends Activity {
 
-
+    static int globalCounter=0;
     static final String TAG = GroupMessengerActivity.class.getSimpleName(); /// for getting simple name of the class for logger
     static final String REMOTE_PORT0 = "11108";
     static final String REMOTE_PORT1 = "11112";
