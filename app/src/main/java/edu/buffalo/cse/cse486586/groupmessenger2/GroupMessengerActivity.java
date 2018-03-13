@@ -16,15 +16,28 @@ import android.widget.EditText;
 import android.widget.TextView;
 
 import java.io.BufferedReader;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.InterruptedIOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutput;
+import java.io.ObjectOutputStream;
 import java.io.PrintWriter;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.PriorityQueue;
 
 /**
  * GroupMessengerActivity is the main Activity for the assignment.
@@ -33,10 +46,17 @@ import java.util.List;
  *
  */
 
-//Reference: Android Developer : https://developer.android.com/develop/index.html
+/** References: Android Developer : https://developer.android.com/develop/index.html
+ *  Priority Queue : https://docs.oracle.com/javase/7/docs/api/java/util/PriorityQueue.html
+ *  Input/Output streams: https://docs.oracle.com/javase/7/docs/api/java/io/InputStream.html
+ * Content Provider : https://developer.android.com/guide/topics/providers/content-providers.html
+ * Content Resolver : https://developer.android.com/reference/android/content/ContentResolver.html
+ * https://docs.oracle.com/javase/7/docs/api/java/lang/Exception.html
+ *
+ * */
 public class GroupMessengerActivity extends Activity {
 
-    static int globalCounter=0;
+    static int globalCount=0;
     static final String TAG = GroupMessengerActivity.class.getSimpleName(); /// for getting simple name of the class for logger
     static final String REMOTE_PORT0 = "11108";
     static final String REMOTE_PORT1 = "11112";
@@ -47,11 +67,34 @@ public class GroupMessengerActivity extends Activity {
     final String KEY_FIELD = "key";
     final String VALUE_FIELD = "value";
     static int i=0;
+    PriorityQueue<Message> q= new PriorityQueue<Message>();
+    static List<String> remotePort = new ArrayList<String>();
+    static Map<String, String> procId= new HashMap<String, String>();
+    static String crashedAVDPort="";
+    static boolean isCrashed = false;
+    static int limit=5;
 
-
+//
+//    public static void setRemotePort1(List<String> remotePort1) {
+//        GroupMessengerActivity.remotePort1 = remotePort1;
+//        remotePort1.add(REMOTE_PORT0);
+//        remotePort1.add(REMOTE_PORT1);
+//        remotePort1.add(REMOTE_PORT2);
+//        remotePort1.add(REMOTE_PORT3);
+//        remotePort1.add(REMOTE_PORT4);
+//
+//    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+
+
+        procId.put(REMOTE_PORT0,"0");
+        procId.put(REMOTE_PORT1,"1");
+        procId.put(REMOTE_PORT2,"2");
+        procId.put(REMOTE_PORT3,"3");
+        procId.put(REMOTE_PORT4,"4");
+
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_group_messenger);
 
@@ -90,7 +133,9 @@ public class GroupMessengerActivity extends Activity {
         //Server Socket Creation code
         try{
 
+            Log.e(TAG, "Before creating server socket");
             ServerSocket serverSocket =  new ServerSocket(SERVER_PORT);
+            Log.e(TAG, "After creating server socket");
             new ServerTask().executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, serverSocket); //Gets it's own thread which can run indefinitely
 
 
@@ -122,7 +167,7 @@ public class GroupMessengerActivity extends Activity {
             @Override
             public void onClick(View v) {
 
-                String msg= editText.getText().toString() + "\n";
+                String msg= editText.getText().toString();
                 editText.setText("");
                 // TextView tv = (TextView) findViewById(R.id.textView1);
                 // tv.append("\t"+msg);
@@ -186,40 +231,135 @@ public class GroupMessengerActivity extends Activity {
             String inMsg;
             ServerSocket serverSocket=sockets[0];
             Socket appSocket=null;
-            BufferedReader in;
-
-
-            while (true){
+            DataInputStream in;
 
                 try {
-                    appSocket = serverSocket.accept();
-                    in = new BufferedReader( new InputStreamReader(appSocket.getInputStream()));
-                    inMsg = in.readLine();
-                    Log.e(TAG, "Message received by server And Message is" + "  -----" + inMsg);
-                    publishProgress(inMsg);
-                    in.close();
-                    // appSocket.close();
+                    while (true) {
 
+                        Message msg = new Message();
 
+                        appSocket = serverSocket.accept();
+                        Log.e(TAG, "Entered the server side");
+                        in = new DataInputStream(appSocket.getInputStream());
+                        inMsg = in.readUTF();
 
-                } catch (IOException e) {
-                    e.printStackTrace();
-                    Log.e(TAG, e.getMessage());
-                }finally {
-                    try {
+                        Log.e(TAG, "Message received by server socket:" + "Local Port" + appSocket.getLocalPort() + " And Message is " + inMsg);
+                        Log.e(TAG, inMsg);
+
+                        // Log.e(TAG, String.valueOf(inMsg.getId()));
+
+                        String[] objs = inMsg.split(",");
+                        Log.e(TAG, "splitted data " + inMsg.toString());
+                        Log.d(TAG, "NewMReceived" + inMsg);
+                        if (objs[0].equals("Failed")) {
+                            crashedAVDPort = objs[1].trim();
+                            removeFromQ(procId.get(crashedAVDPort));
+                            DataOutputStream out = new DataOutputStream(appSocket.getOutputStream());
+                            out.writeUTF("Received OK");
+                            out.flush();
+
+                        }
+                        else {
+
+                            msg.setMsg(objs[0]);
+                            msg.setId(objs[1]);
+                            msg.setReady(Boolean.parseBoolean(objs[2].trim()));
+                            msg.setNewMsg(Boolean.parseBoolean(objs[3].trim()));
+
+                            if (msg.isNewMsg()) {
+                                globalCount++;
+                                msg.setId(String.valueOf(globalCount) + "." + objs[1]);
+                                q.add(msg);
+                                DataOutputStream out = new DataOutputStream(appSocket.getOutputStream());
+                                Log.e(TAG, "Sending from server side " + String.valueOf(globalCount));
+                                out.writeUTF(msg.toString());
+                                out.flush();
+                                // out.close();
+                                Log.d(TAG, "Sending first step object to client" + msg.toString());
+                                //appSocket.close();
+                            }
+                            if (!msg.isNewMsg()) {
+
+                                Log.e(TAG, "Not a new msg");
+                                // appSocket = serverSocket.accept();
+                                q.remove(msg);
+                                q.add(msg);
+                                globalCount = Math.max(Integer.parseInt(msg.getId().split("\\.")[0]), globalCount);
+                                globalCount++;
+                                Log.d(TAG, "updated_globalcount" + globalCount);
+                                DataOutputStream out = new DataOutputStream(appSocket.getOutputStream());
+                                Log.e(TAG, "Sending final response to client as: Received OK");
+                                out.writeUTF("Received OK");
+                                out.flush();
+                                // out.close();
+
+                            }
+                        }
+
                         appSocket.close();
-                    } catch (IOException e) {
-                        e.printStackTrace();
+                        PriorityQueue<Message> q2 = new PriorityQueue<Message>(q);
+
+                        Log.d(TAG, " This is queue2");
+                        queueData(q2);
+
+                        while (!q.isEmpty()) {
+                            if (q.peek().isReady()) {
+
+                                Log.e(TAG, "Printing queue: " + q.peek().toString());
+                                Message s = q.poll();
+                                Log.d("QUEUE", s.getMsg().trim());
+                                String st = s.getMsg().trim();
+                                Log.d("QUEUE", st);
+
+
+                                publishProgress(st);
+                            } else
+                                break;
+
+                        }
+
+                        PriorityQueue<Message> q3 = new PriorityQueue<Message>(q);
+
+                        Log.d(TAG, " This is queue3");
+                        queueData(q3);
+
+
+                        //  appSocket.close();
+
+
+                        // publishProgress(inMsg);
+                        //  in.close();
+
+
                     }
+
+
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    Log.e("EXC", "Inside Socket Exc :" + e.getMessage());
+//                    Log.e("EXC", "Error due to Server socket certain issue");
                 }
 
-
-            }
+                return null;
 
         }
 
 
+
+        public void queueData(PriorityQueue<Message> q){
+            Log.d(TAG," This is queue");
+
+            while (!q.isEmpty()){
+
+                Log.d(TAG, "This is queue data :"+ q.poll().toString() );
+
+            }
+        }
+
+
         protected void onProgressUpdate(String...strings) {
+
+            Log.e(TAG, "Printing msg to be published: "+ strings[0] );
 
             String strReceived = strings[0].trim();
             TextView remoteTextView = (TextView) findViewById(R.id.receivedMsgView);
@@ -233,10 +373,10 @@ public class GroupMessengerActivity extends Activity {
 
 
             // TextView mTextView;
-            ContentResolver mContentResolver = getContentResolver();
+           ContentResolver mContentResolver = getContentResolver();
             Log.e(TAG, "Before definition");
-            Uri mUri = buildUri("content", "edu.buffalo.cse.cse486586.groupmessenger1.provider");
-            ContentValues mContentValues;
+           Uri mUri = buildUri("content", "edu.buffalo.cse.cse486586.groupmessenger2.provider");
+           ContentValues mContentValues;
             Log.e(TAG, "Before Cursor");
 
             //;
@@ -247,8 +387,6 @@ public class GroupMessengerActivity extends Activity {
 //
 //            }
 
-            // int i = resultCursor.getCount();
-
 
             mContentValues = initTestValues(i, strReceived);
             mContentResolver.insert(mUri, mContentValues);
@@ -256,7 +394,6 @@ public class GroupMessengerActivity extends Activity {
 
             Log.e(TAG, "Inserted at key: " + i + " and Value is:" + mContentValues.get(VALUE_FIELD));
             Log.e(TAG, "Inserted the data :"+ mContentValues.getAsString(Integer.toString(i)) + " ");
-//
 //
 //
         }
@@ -292,63 +429,226 @@ public class GroupMessengerActivity extends Activity {
         @Override
         protected Void doInBackground(String... msgs) {
 
-            // Socket socket=null;
-            PrintWriter out = null;
+            //Socket socket=null;
+            DataOutputStream out = null;
+            // Message toRead = null;
             Log.e(TAG, "Socket declared Client");
+            int localCount = 0;
+            int testExc = 0;
+
+            List<String> remotePort = new ArrayList<String>();
+            remotePort.add(REMOTE_PORT0);
+            remotePort.add(REMOTE_PORT1);
+            remotePort.add(REMOTE_PORT2);
+            remotePort.add(REMOTE_PORT3);
+            remotePort.add(REMOTE_PORT4);
+
 
             try {
 
-                // String remotePort2=REMOTE_PORT1;
-
-                List<String> remotePort = new ArrayList<String>();
-
-
-                remotePort.add(0, REMOTE_PORT1);
-                remotePort.add(1, REMOTE_PORT2);
-                remotePort.add(2, REMOTE_PORT3);
-                remotePort.add(3, REMOTE_PORT4);
-                remotePort.add(4, REMOTE_PORT0);
-
-//                String remotePort = REMOTE_PORT0;
-//                if (msgs[1].equals(REMOTE_PORT0))
-//                    remotePort = REMOTE_PORT1;
-                String msgToSend = msgs[0];
+                Message msgToSend = new Message();
 
                 for (int i = 0; i < 5; i++) {
-                    Socket socket = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), // By default chosen by Android system emulator for communication and is directed to 127.0.0.1 which is actual listening ip fro host
-                            Integer.parseInt(remotePort.get(i)));
-                    Log.e(TAG, "now sending to " + remotePort.get(i).toString());
+                    if (!remotePort.get(i).equals(crashedAVDPort)) {
+                        try {
+                            Socket socket = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), // By default chosen by Android system emulator for communication and is directed to 127.0.0.1 which is actual listening ip fro host
+                                    Integer.parseInt(remotePort.get(i)));
 
-                    out = new PrintWriter(socket.getOutputStream(), true);
+//                            Log.d("EXC", "Value of test var: " + testExc);
 
-                    out.println(msgToSend);
-                    Log.e(TAG, "Sent");
-                    out.flush();
-                    //socket.close();
+                            Log.e(TAG, "Sending first step object to other clients" + remotePort.get(i));
 
-//                socket = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), // By default chosen by Android system emulator for communication and is directed to 127.0.0.1 which is actual listening ip fro host
-//                        Integer.parseInt(remotePort[1]));
-//                out =new PrintWriter(socket.getOutputStream(), true);
-//                out.println(msgToSend);
+                            out = new DataOutputStream(socket.getOutputStream());
+                            msgToSend.setMsg(msgs[0].trim());
+                            msgToSend.setReady(false);
+                            msgToSend.setNewMsg(true);
+                            msgToSend.setId(procId.get(msgs[1]));
+                            out.writeUTF(msgToSend.toString());
+                            Log.e(TAG, "Sent message " + msgToSend.toString());
+                            out.flush();
+                            // out.close();
+
+                            DataInputStream in = new DataInputStream(socket.getInputStream());
+//                            Log.e(TAG, "------------Ready to listen on client side" + "  -----");
+
+                            String toRead = in.readUTF();
+                            Log.e(TAG, "Message received by Client " + remotePort.get(i) + " second time And Message is" + "  -----" + toRead);
+                            //in.close();
+
+                            String[] objs = toRead.split(",");
+                            int c = Integer.parseInt(objs[1].split("\\.")[0]);
+                            if (c > localCount) {
+                                localCount = c;
+                            }
+
+//                            Log.e(TAG, "printing st object-----------" + msgToSend.toString());
+
+//                     if(localCount > Double.parseDouble(msgToSend.getId().split("\\.")[0]))
+//                     msgToSend.setId(String.valueOf(localCount));
+                            socket.close();
+
+                        } catch (SocketException e) {
+                            isCrashed = true;
+                            crashedAVDPort = remotePort.get(i);
+                            Log.d("EXC", "Inside Socket Exception :" + e.getMessage());
+
+                        } catch (IOException e) {
+                            isCrashed = true;
+                            crashedAVDPort = remotePort.get(i);
+
+
+                            Log.e(TAG, "Error in creating socket | Failed at Client side due to | Inside IOException : " + e.getMessage());
 //
-//                socket = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), // By default chosen by Android system emulator for communication and is directed to 127.0.0.1 which is actual listening ip fro host
-//                        Integer.parseInt(remotePort[2]));
-//                out =new PrintWriter(socket.getOutputStream(), true);
-//                out.println(msgToSend);
+//                            Log.d("EXC", "Timeout thrown: " + testExc);
+//                            testExc = 999;
+//                            Log.d("EXC", "Changing varible here : " + testExc);
+//                            if (e instanceof SocketTimeoutException) {
+//                                Log.d("EXC", "Instance of Socket timetout");
+//                            }
+//                            if (e instanceof InterruptedIOException) {
 //
-//                socket = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), // By default chosen by Android system emulator for communication and is directed to 127.0.0.1 which is actual listening ip fro host
-//                        Integer.parseInt(remotePort[3]));
-//                out =new PrintWriter(socket.getOutputStream(), true);
-//                out.println(msgToSend);
+//                                Log.d("EXC", "Instance of Interrupted IO ");
+//                            }
 
-
+                        }
+                    }
                     //out.flush();
-                    //socket[i].close();
                 }
 
+                if (isCrashed) {
+
+                        for (int i = 0; i < limit; i++) {
+                            if (!remotePort.get(i).equals(crashedAVDPort)) {
+                                Socket socket = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), // By default chosen by Android system emulator for communication and is directed to 127.0.0.1 which is actual listening ip fro host
+                                        Integer.parseInt(remotePort.get(i)));
+                                Log.e(TAG, "Sending crashed AVDs port number to other AVDs| Port number is :" + remotePort.get(i).toString());
+
+                                out = new DataOutputStream(socket.getOutputStream());                  //  out.writeObject(toRead);
+                                Log.e(TAG, "Failed port " + crashedAVDPort + " sent");
+                                out.writeUTF("Failed," + crashedAVDPort + "\n");
+                                out.flush();
+                                DataInputStream in = new DataInputStream(socket.getInputStream());
+                                //                        try {
+                                String x = in.readUTF();
+                                Log.e(TAG, "Received OK from server " + x);
+
+                                //                            System.out.print(x);
+                                //
+                                //                        } catch (Exception e) {
+                                //
+                                //                            System.out.println(e);
+                                //                        }
+                                if (x.trim().equals("Received OK")) {
+                                    in.close();
+                                    socket.close();
+                                }
+
+                            }
+                            isCrashed = false;
+                        }
+
+                }
+
+                // toRead.setReady(true);
+
+                msgToSend.setMsg(msgs[0].trim());
+                msgToSend.setId(localCount + "." + procId.get(msgs[1]));
+                msgToSend.setNewMsg(false);
+                msgToSend.setReady(true);
 
 
+                for (int i = 0; i < 5; i++) {
+                    if (!remotePort.get(i).equals(crashedAVDPort)) {
+                        try {
+                            Socket socket = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), // By default chosen by Android system emulator for communication and is directed to 127.0.0.1 which is actual listening ip fro host
+                                    Integer.parseInt(remotePort.get(i)));
+                            Log.e(TAG, "Sending agreed msg to other AVDs :  " + remotePort.get(i).toString());
 
+                            out = new DataOutputStream(socket.getOutputStream());                  //  out.writeObject(toRead);
+                            Log.e(TAG, "Sent");
+                            out.writeUTF(msgToSend.toString());
+                            out.flush();
+                            // out.close();
+                            Log.d(TAG, "Sent final object " + msgToSend.toString());
+                            DataInputStream in = new DataInputStream(socket.getInputStream());
+//                        try {
+                            String x = in.readUTF();
+                            Log.e(TAG, "Received OK from server " + x);
+
+//                            System.out.print(x);
+//
+//                        } catch (Exception e) {
+//
+//                            System.out.println(e);
+//                        }
+                            if (x.trim().equals("Received OK")) {
+                                in.close();
+                                socket.close();
+                            }
+                        } catch (SocketException se) {
+                            isCrashed = true;
+                            crashedAVDPort = remotePort.get(i);
+
+                            Log.e(TAG, " Not creating socket second time : " + se.getMessage());
+                        } catch (IOException io) {
+                            isCrashed = true;
+                            crashedAVDPort = remotePort.get(i);
+
+                        }
+
+                    }
+                }
+
+//
+//                if (isCrashed){
+//                    removeFromQ(q,procId.get(crashedAVDPort));
+//                    //isCrashed=false;
+//
+//                }
+
+
+                if (isCrashed) {
+
+                        for (int i = 0; i < limit; i++) {
+                            if (!remotePort.get(i).equals(crashedAVDPort)) {
+                                Socket socket = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), // By default chosen by Android system emulator for communication and is directed to 127.0.0.1 which is actual listening ip fro host
+                                        Integer.parseInt(remotePort.get(i)));
+                                Log.e(TAG, "Sending crashed AVDs port number to other AVDs| Port number is : " + remotePort.get(i).toString());
+
+                                out = new DataOutputStream(socket.getOutputStream());                  //  out.writeObject(toRead);
+                                Log.e(TAG, "Sent");
+                                out.writeUTF("Failed," + crashedAVDPort + "\n");
+                                out.flush();
+
+                                DataInputStream in = new DataInputStream(socket.getInputStream());
+                                //                        try {
+                                String x = in.readUTF();
+                                Log.e(TAG, "Received OK from server " + x);
+
+                                //                            System.out.print(x);
+                                //
+                                //                        } catch (Exception e) {
+                                //
+                                //                            System.out.println(e);
+                                //                        }
+                                if (x.trim().equals("Received OK")) {
+                                    //                                try {
+                                    in.close();
+                                    //                                } catch (IOException e) {
+                                    //                                    e.printStackTrace();
+                                    //                                }
+                                    //                                try {
+                                    socket.close();
+                                    //                                } catch (IOException e) {
+                                    //                                    e.printStackTrace();
+                                    //                                }
+                                }
+                            }
+                            isCrashed = false;
+                        }
+
+
+                }
                 /*
                  * TODO: Fill in your client code that sends out a message- Client code written below:
                  * Reference: https://docs.oracle.com/javase/tutorial/networking/sockets/index.html
@@ -366,10 +666,8 @@ public class GroupMessengerActivity extends Activity {
                 //  out.close();
                 //  socket.close(); //Commented for some random issue; But, Socket shud be always closed in general
 
-            } catch (UnknownHostException e) {
-                Log.e(TAG, "ClientTask UnknownHostException");
-            } catch (IOException e) {
-                Log.e(TAG, "ClientTask socket IOException");
+            } catch (Exception e) {
+                Log.e(TAG, "ClientTask UnknownHostException :" + e.getMessage());
             }
 //             finally {
 //                if (socket!=null) {
@@ -386,7 +684,19 @@ public class GroupMessengerActivity extends Activity {
         }
     }
 
+    private void removeFromQ(String procId) {
 
+        Iterator<Message> itr= q.iterator();
+        while (itr.hasNext()){
+            Message m=itr.next();
+            if (m.getId().split("\\.")[1].equals(procId)){
+                Log.d("EXC", "The object to be removed :" + m.toString());
+                q.remove(m);
+            }
+
+        }
+
+    }
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {

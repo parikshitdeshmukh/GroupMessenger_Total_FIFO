@@ -8,6 +8,13 @@ import android.database.sqlite.SQLiteOpenHelper;
  * Created by parik on 2/17/18.
  */
 
+/** References: Android Developer : https://developer.android.com/develop/index.html
+ *  Priority Queue : https://docs.oracle.com/javase/7/docs/api/java/util/PriorityQueue.html
+ *  Input/Output streams: https://docs.oracle.com/javase/7/docs/api/java/io/InputStream.html
+ * Content Provider : https://developer.android.com/guide/topics/providers/content-providers.html
+ * Content Resolver : https://developer.android.com/reference/android/content/ContentResolver.html
+ *
+ * */
 public class DBHelper extends SQLiteOpenHelper {
 
 
@@ -24,20 +31,10 @@ public class DBHelper extends SQLiteOpenHelper {
        // db.execSQL(DELETE_TABLE);
     }
 
-//    public DBHelper getDbHelper(){
-//
-//        if (instance==null) {
-//
-//            instance= new DBHelper(this.getContext(),db);
-//        }
-//        return instance;
-//    }
-
     @Override
     public void onCreate(SQLiteDatabase db) {
        
         db.execSQL(CREATE_TABLE);
-
 
     }
 

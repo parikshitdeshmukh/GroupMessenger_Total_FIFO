@@ -32,7 +32,13 @@ import static edu.buffalo.cse.cse486586.groupmessenger2.GroupMessengerActivity.T
  *
  */
 
-//Reference: Android Developer : https://developer.android.com/develop/index.html
+/** References: Android Developer : https://developer.android.com/develop/index.html
+ *  Priority Queue : https://docs.oracle.com/javase/7/docs/api/java/util/PriorityQueue.html
+ *  Input/Output streams: https://docs.oracle.com/javase/7/docs/api/java/io/InputStream.html
+ * Content Provider : https://developer.android.com/guide/topics/providers/content-providers.html
+ * Content Resolver : https://developer.android.com/reference/android/content/ContentResolver.html
+ *
+ * */
 
 public class GroupMessengerProvider extends ContentProvider {
 
@@ -100,14 +106,6 @@ public class GroupMessengerProvider extends ContentProvider {
         return 0;
     }
 
-//    public DBHelper getDbHelper(){
-//
-//        if (instance==null) {
-//
-//            instance= new DBHelper(this.getContext());
-//        }
-//        return instance;
-//    }
 
     @Override
     public Cursor query(Uri uri, String[] projection, String selection, String[] selectionArgs,
@@ -148,8 +146,7 @@ public class GroupMessengerProvider extends ContentProvider {
 
         Cursor cur = qb.query(db, projection, sel, newSelectionArgs,null,null,sortOrder);
         // Cursor cur= db.query( DBContract.ConversationTable.TABLE_NAME, projection, sel,newSelectionArgs,null,null,null,sortOrder);
-        //db.close();
-        //dbHelper.close();
+
 
         Log.e(TAG, "Queried the database. and ouput is:  "+ cur.getCount());
 //        Log.v("query", selection);

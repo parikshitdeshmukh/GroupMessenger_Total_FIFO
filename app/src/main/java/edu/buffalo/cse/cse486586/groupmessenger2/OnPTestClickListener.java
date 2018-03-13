@@ -28,8 +28,13 @@ import android.widget.TextView;
  *
  */
 
-//Reference: Android Developer : https://developer.android.com/develop/index.html
-
+/** References: Android Developer : https://developer.android.com/develop/index.html
+ *  Priority Queue : https://docs.oracle.com/javase/7/docs/api/java/util/PriorityQueue.html
+ *  Input/Output streams: https://docs.oracle.com/javase/7/docs/api/java/io/InputStream.html
+ * Content Provider : https://developer.android.com/guide/topics/providers/content-providers.html
+ * Content Resolver : https://developer.android.com/reference/android/content/ContentResolver.html
+ *
+ * */
 public class OnPTestClickListener implements OnClickListener {
 
     private static final String TAG = OnPTestClickListener.class.getName();
